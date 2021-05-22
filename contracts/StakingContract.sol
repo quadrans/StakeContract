@@ -17,78 +17,81 @@ contract StakingContract {
     IERC20 immutable private _token;
     
     // Staking variables, amount and days needed
-    uint rewardAmount = 14;                 // Percentage
-    uint rewardPeriod = 31536000;           // Number of seconds needed to get the whole percentage
-    uint MIN_ALLOWED_AMOUNT = 100000;       // Minumum number of tokens to stake
+    uint rewardInterest = 14;                 // Percentage 14%
+    uint rewardPeriod = 31536000;             // Number of seconds needed to get the whole percentage = 1 Year
+    uint MIN_ALLOWED_AMOUNT = 100000;         // Minumum number of tokens to stake
     
     // Struct for tracking stakeholders
     struct stakeHolder {
         uint joinDate;
-        uint amount;
+        uint stake;
     }
     
     // Stakeholders
     mapping (address => stakeHolder) public StakeHolders;
     
-    // Amount of actually stacked tokens
-    uint private _stackedTokens;
+    // Amount of actually staked tokens
+    uint public stakedTokens;
     // Total amount of tokens rewarded
-    uint private _rewardedTokens;
+    uint public rewardedTokens;
     
     modifier isStakeHolder() {
-        require(StakeHolders[msg.sender].amount != 0);
+        require(StakeHolders[msg.sender].stake != 0);
         _;
     }
     
-    event Stacked(address _address, uint _amount);
+    event Staked(address _address, uint _amount);
     event Withdrawed(address _address, uint _amount);
     
     constructor(address _tokenAddress) {
         _token = IERC20(_tokenAddress);
-        _stackedTokens = 0;
-        _rewardedTokens = 0;
+        stakedTokens = 0;
+        rewardedTokens = 0;
     }
     
     function stake(uint _amount) external  {
-        require(_amount != 0);
+        require(StakeHolders[msg.sender].stake == 0, "Already Staking");
         require(_amount >= MIN_ALLOWED_AMOUNT);
         require(_token.balanceOf(msg.sender) >= _amount);
         require(_token.transferFrom(msg.sender,address(this),_amount));
-        StakeHolders[msg.sender].amount = _amount;
+
+        StakeHolders[msg.sender].stake = _amount;
         // solhint-disable-next-line not-rely-on-time
         StakeHolders[msg.sender].joinDate = block.timestamp;
-        _stackedTokens = _stackedTokens.add(_amount);
-        emit Stacked(msg.sender, _amount);      
+        stakedTokens = stakedTokens.add(_amount);
+        emit Staked(msg.sender, _amount);      
     }
     
-    function withdraw() isStakeHolder external returns (bool) {
-        uint _toSend = getBalance();
+    function withdraw() isStakeHolder external {
+        uint _interest = getInterest();
+        uint _toSend = StakeHolders[msg.sender].stake.add(_interest);
         require(_token.balanceOf(address(this)) >= _toSend, "Not enough tokens on the contract");
-        require(_token.transfer(address(this),_toSend));
-        _stackedTokens = _stackedTokens.sub(_toSend);
-        _rewardedTokens = _rewardedTokens.add(_toSend.sub(StakeHolders[msg.sender].amount));
-        StakeHolders[msg.sender].amount = 0;
+        require(_token.transfer(msg.sender,_toSend));
+        stakedTokens = stakedTokens.sub(StakeHolders[msg.sender].stake);
+        rewardedTokens = rewardedTokens.add(_toSend.sub(StakeHolders[msg.sender].stake));
+        StakeHolders[msg.sender].stake = 0;
         StakeHolders[msg.sender].joinDate = 0;
-        emit Withdrawed(msg.sender, _amount);      
+        emit Withdrawed(msg.sender, _toSend);      
     }
     
-    function getStackedAmount() public view returns (uint) {
-        return _stackedTokens;
-    }
-    
-    function getRewardedAmount() public view returns (uint) {
-        return _rewardedTokens;
-    }
-    
-    function getBalance() isStakeHolder public view returns (uint) {
-        uint _amount = StakeHolders[msg.sender].amount;
+    function getInterest() isStakeHolder public view returns (uint) {
+        uint _stake = StakeHolders[msg.sender].stake;
         uint _time = StakeHolders[msg.sender].joinDate;
         uint _now = block.timestamp;
         uint _diff = _now.sub(_time);
-        require(_diff > 0);
-        uint multiplier = rewardAmount.add(100)
-        uint _newAmount = _amount.div(rewardPeriod).mul(_diff).mul(multiplier).div(100);
-        return _newAmount;
+
+        uint numerator = _stake.mul(_diff).mul(rewardInterest);
+        uint denominator = rewardPeriod.mul(100);
+        
+        uint _interest = numerator.div(denominator);
+        return _interest;
     }
     
+    // function getStakedAmount() public view returns (uint) {
+    //     return stakedTokens;
+    // }
+    
+    // function getRewardedAmount() public view returns (uint) {
+    //     return rewardedTokens;
+    // }
 }
