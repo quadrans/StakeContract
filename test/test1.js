@@ -108,7 +108,7 @@ contract ("StakingContract", accounts => {
     }
 
     // ==== Tests ============================================================================================
- 
+
     it("Let's go Martin", async() => {
         // Go back to previous snapshot
         let revert = await delorean.revertToSnapshot(SNAPSHOT);
@@ -175,6 +175,7 @@ contract ("StakingContract", accounts => {
         await token.transfer(locker.address, 100000,{from: OWNER});
         value = await token.balanceOf.call(locker.address);
         assert.equal(value, 100000, "Wrong Supply");
+        await showtokenBalance("IronToken", token, [OWNER, USER1, USER2, locker.address, staker.address,BENEFICIARY])
     });
 
     it("Try Early release", async() => {
@@ -193,6 +194,8 @@ contract ("StakingContract", accounts => {
 
 
     it("Check Staker parameters", async() => {    
+        await showtokenBalance("IronToken", token, [OWNER, USER1, USER2, locker.address, staker.address,BENEFICIARY])
+
         let s = await staker.stakedTokens.call();
         assert.equal(s,0,"-1-");
         let r = await staker.rewardedTokens.call();
@@ -212,15 +215,15 @@ contract ("StakingContract", accounts => {
     });
 
     it("Try Cheap Staking", async() => {
-        await token.approve(staker.address, 100000, {from: USER2});
+        await token.approve(staker.address, 200000, {from: USER2});
         await token.allowance(USER2, staker.address)
         await truffleAssert.reverts( staker.stake(5, {from: USER2}), truffleAssert.ErrorType.REVERT, "reverts" );
     });
 
     it("Proper Staking", async() => {
-        await staker.stake(100000, {from: USER2})
+        await staker.stake(155000, {from: USER2});
         let b = await token.balanceOf(staker.address);
-        assert.equal(b.toNumber(), 100000, "Wrong Stake");
+        assert.equal(b.toNumber(), 155000, "Wrong Stake");
         let h = await staker.StakeHolders.call(USER2);
     });
 
@@ -228,7 +231,7 @@ contract ("StakingContract", accounts => {
     it("Feed Staker", async() => {
         await token.transfer(staker.address, 100000,{from: OWNER});
         value = await token.balanceOf.call(staker.address);
-        assert.equal(value.toNumber(), 200000, "Wrong Supply");
+        assert.equal(value.toNumber(), 255000, "Wrong Supply");
 
         await showtokenBalance("IronToken", token, [OWNER, USER1, USER2, locker.address, staker.address,BENEFICIARY])
     });
@@ -236,7 +239,7 @@ contract ("StakingContract", accounts => {
 
     async function StakeTime (time) {
         // Get initial balances
-        console.log("    - time    : ", time)
+        console.log("   - time    : ", time)
         let ib_s = await token.balanceOf(staker.address);
         let ib_u = await token.balanceOf(USER1);
         
@@ -251,17 +254,24 @@ contract ("StakingContract", accounts => {
         await delorean.advanceTimeAndBlock(time)
 
         let i = await staker.getInterest({from: USER1})
-        console.log("    - interest: ", i.toNumber())
+        console.log("   - interest: ", i.toNumber())
 
         // Widthdraw
         await staker.withdraw({from: USER1})
 
         // Check
-        b = await token.balanceOf(staker.address);
-        assert.equal(b.toNumber(), (ib_s-i.toNumber()), "Wrong Remains for staker");
         let u = await token.balanceOf(USER1);
         assert.equal(u.toNumber(), ib_u.toNumber()+i.toNumber(), "Wrong balance for user1");
-        console.log("    - user balance : ", u.toNumber())
+
+        b = await token.balanceOf(staker.address);
+        assert.equal(b.toNumber(), (ib_s-i.toNumber()), "Wrong Remains for staker");
+
+        console.log("   - user balance : ", u.toNumber())
+
+        let stk = await staker.stakedTokens.call()
+        let rew = await staker.rewardedTokens.call()
+        console.log("   - staked : ", stk.toNumber())
+        console.log("   - rewarded : ", rew.toNumber()) 
     }
     
     it("1 hour stake", async() => {
@@ -294,14 +304,53 @@ contract ("StakingContract", accounts => {
     });
 
 
-    it("", async() => {
+    it("Closing", async() => {
+        let stk = await staker.stakedTokens.call()
+        console.log("   - still at stake : ", stk.toNumber());
+
+        let tx = await staker.closeStaking(true)
+        output  = getLog(tx.receipt.logs,"StakingisClosed","_closed");
+        assert.equal(output, true, "Did not close");
         
+        let closed = await staker.closed.call();
+        assert.equal(closed, true, "Did not close");
+
+        await showtokenBalance("IronToken", token, [OWNER, USER1, USER2, locker.address, staker.address,BENEFICIARY])
     });
 
-    it("", async() => {
-        
-    });
+    // it("Early cleanup to withdraw od woner", async() => {
+    //     await truffleAssert.reverts( staker.cleanUpRemainings(), truffleAssert.ErrorType.REVERT, "reverts" );
+    // });
 
+    // it("User2 withdraw when closed", async() => {
+    //     // User2 staked 10k
+
+    //     let u2_b = await token.balanceOf(USER2);
+    //     console.log("   - balance user2 before: ", u2_b.toNumber())
+    //     let i = await staker.getInterest({from: USER2})
+    //     console.log("   - interest would be: ", i.toNumber())
+
+    //     // Widthdraw
+    //     await staker.withdraw({from: USER2})
+
+    //     // Check
+    //     let u2_a = await token.balanceOf(USER2);
+    //     console.log("   - balance user2 afther: ", u2_a.toNumber())
+    //     let stk = await staker.stakedTokens.call()
+    //     assert.equal(stk.toNumber(), 0, "Some stakes left?");    
+    // });
+
+    // it("Cleanup Remainings", async() => {
+    //     let bal1 = await token.balanceOf(staker.address);
+    //     console.log("   - balance controlled by staker contract : ", bal1.toNumber());
+    //     let tx = await staker.cleanUpRemainings()
+    //     let rec  = getLog(tx.receipt.logs,"CleanedUp","_recipient");
+    //     assert.equal(rec, OWNER, "Wrong owner");
+    //     let wtd  = getLog(tx.receipt.logs,"CleanedUp","_amount");
+    //     console.log("   - balance cleaned up : ", wtd.toNumber());        
+    //     let bal2 = await token.balanceOf(staker.address);
+    //     assert.equal(bal2, 0, "Did not clean up all");
+    // });
 
     // // Call
     // it("Test Declaration", async() => {
