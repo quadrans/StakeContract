@@ -20,7 +20,7 @@ contract StakingContract is Ownable {
     // Staking variables, amount and days needed
     uint public rewardInterest = 14;                // Percentage 14%
     uint public rewardPeriod = 31536000;            // Number of seconds needed to get the whole percentage = 1 Year
-    uint public MIN_ALLOWED_AMOUNT = 10000;        // Minumum number of tokens to stake
+    uint public MIN_ALLOWED_AMOUNT = 100000;        // Minumum number of tokens to stake
     bool public closed;                             // is the staking closed? 
     address[] public StakeHoldersList;              // List of all stakeholders
     
@@ -166,15 +166,10 @@ contract StakingContract is Ownable {
     
         @notice    Only owner can set the staking closed/open
      */
-     
-    function openStaking() public onlyOwner { 
-        closed = false;
-        emit StakingisClosed (false);
-    }
 
-    function closeStaking() public onlyOwner {
+    function closeStaking(bool _close) public onlyOwner {
         // Set the staking as open/closed
-        closed = true;
+        closed = _close;
 
         uint hodlers = StakeHoldersList.length;
         for (uint i=0; i<hodlers; i++) {
@@ -186,7 +181,7 @@ contract StakingContract is Ownable {
 
         // Get back remaining tokens
         cleanUpRemainings();
-        emit StakingisClosed (true);
+        emit StakingisClosed (_close);
     }
 
 
